@@ -70,6 +70,11 @@ export default function WeekPage({ data }) {
                     ? `→ ${day.chargingWindow ? `${day.chargingWindow.start}–${day.chargingWindow.end} laden` : 'laden'} · Ziel ${day.targetSoc} %`
                     : '→ nicht laden'}
                 </div>
+                {day.action === 'CHARGE' && day.energySource && (
+                  <div className="day-action energy-source-line">
+                    {day.energySource === 'PV_UND_SPEICHER' ? '🔋 PV + Hausspeicher (Annahme)' : '☀️ Nur PV-Überschuss'}
+                  </div>
+                )}
               </div>
             </div>
           )

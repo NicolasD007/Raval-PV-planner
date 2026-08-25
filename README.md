@@ -16,6 +16,10 @@ getestet) – nicht nur eine Beschreibung geplanter Funktionen.
   Harte Randbedingungen (werden nie verletzt): Sperrzeiten, 40 %-Fahrzeugreserve,
   70 %-Speicher-Nachtreserve. Reine Netzladung wird nie automatisch
   vorgeschlagen – nicht erreichbare Ziele werden klar als "gefährdet" markiert.
+  Jeder Ladetag ist zusätzlich mit `energySource` gekennzeichnet
+  (`PV_UEBERSCHUSS` oder `PV_UND_SPEICHER`, sichtbar in der UI als Chip "Nur
+  PV-Überschuss" bzw. "PV + Hausspeicher") – siehe eigener Abschnitt weiter
+  unten zur Hausspeicher-Zuschaltung.
 - **SoC-Lernfunktion** (`src/lib/consumption.js`): rollierender Werktags-/
   Wochenend-Verbrauch (getrennt), Ausreißer-Erkennung relativ zum Median,
   Ausschluss von Intervallen mit externer/unplanmäßiger Zwischenladung.
@@ -60,7 +64,7 @@ getestet) – nicht nur eine Beschreibung geplanter Funktionen.
   Woche-Tab) und SoC-Verlauf als Liniendiagramm (`SocChart.jsx`, SoC-Tab,
   inkl. Referenzlinien für Fahrzeug-Reserve/Wochenendziel) – reines SVG/CSS,
   keine Chart-Bibliothek.
-- **Tests**: 65 Unit-/Integrationstests (Node.js `node:test`, siehe unten).
+- **Tests**: 68 Unit-/Integrationstests (Node.js `node:test`, siehe unten).
 
 ## Lokal starten
 
@@ -79,7 +83,7 @@ npm test
 
 Nutzt bewusst den in Node.js eingebauten Testrunner (`node --test`) statt
 Vitest – keine zusätzliche Test-Abhängigkeit, läuft überall ohne weiteren
-Installationsschritt. 65 Tests decken u. a. alle 12 in der Spec geforderten
+Installationsschritt. 68 Tests decken u. a. alle 12 in der Spec geforderten
 Planning-Engine-Fälle ab (`src/lib/planningEngine.test.mjs`):
 
 | # | Szenario |
@@ -160,14 +164,20 @@ Diese Werte wurden im Klärungsgespräch festgelegt und sind in
   von 16,5 kWh/100 km (`vehicle.assumedConsumptionKwhPer100km`, siehe
   `src/lib/vehicleRange.js`) – ein grober, WLTP-naher Schätzwert, kein
   Bordcomputer-Messwert, den diese App nicht hat.
-- **Hausspeicher-/Wallbox-Karten auf der Heute-Seite zeigen bewusst keine
-  erfundene Live-SoC/Live-Status-Anzeige**: "Hausspeicher" zeigt das
-  konfigurierte Reserve-Ziel (`houseBattery.nightReservePct`), nicht einen
-  gemessenen aktuellen Ladestand (den es mangels Speicher-Telemetrie nicht
-  gibt); "Wallbox" zeigt "Lädt gerade" nur, wenn die aktuelle Uhrzeit
-  tatsächlich im heute geplanten Ladefenster liegt (aus dem echten Plan
-  abgeleitet), sonst "Überschussladen bereit" – ebenfalls keine echte
-  Wallbox-Anbindung.
+- **Hausspeicher-Zuschaltung fürs Auto-Laden** (`houseBattery.allowBatteryAssistCharging`,
+  Default `true`): Reicht an einem Ladetag reiner PV-Überschuss nicht für das
+  Ziel, plant `findBestChargeDay()` (`src/lib/planningEngine.js`) optional
+  zusätzlich Hausspeicher-Energie ein – aber ausschließlich den Anteil
+  OBERHALB der konfigurierten Nachtreserve (`assumedBatteryAssistKwh()`,
+  z. B. 15 kWh Kapazität × (100 % − 70 % Reserve) = 4,5 kWh). Die Reserve
+  selbst bleibt dabei weiterhin eine harte Grenze (Randbedingung 3). Da keine
+  Live-Speicher-SoC-Anbindung existiert, ist der "Zuschalt"-Betrag eine
+  Modellannahme ("Speicher ist tagsüber eher voll"), keine Messung – deshalb
+  in der UI immer klar als Chip "☀️🔋 PV + Hausspeicher" plus Hinweistext
+  gekennzeichnet, nie stillschweigend als reiner PV-Wert dargestellt. Über
+  `allowBatteryAssistCharging: false` lässt sich das Verhalten abschalten
+  (dann wie zuvor: nicht erreichbare Tage werden als "gefährdet" markiert,
+  ohne Speicher-Fallback).
 
 ## Was noch echte externe Daten/Kalibrierung braucht
 
@@ -175,11 +185,15 @@ Diese Werte wurden im Klärungsgespräch festgelegt und sind in
   ursprünglichen Projekt vermerkt), keine Zählerwerte. Eine Kalibrierung gegen
   echte Haushaltsdaten (z. B. Wechselrichter-/Zähler-API) würde die Prognose
   spürbar verbessern.
-- **Hausspeicher-SoC** wird nicht live erfasst (siehe oben) – nur über eine
-  feste Pauschalreserve modelliert.
-- **Wallbox-Status** ("Lädt gerade") ist aus dem Plan abgeleitet (aktuelle
-  Uhrzeit liegt im geplanten Ladefenster), keine echte Wallbox-API-Anbindung
-  – eine reale Integration könnte den tatsächlichen Ladezustand live zeigen.
+- **Hausspeicher-SoC** wird nicht live erfasst – nur über eine feste
+  Pauschalreserve modelliert (`dailyReplenishmentReserveKwh`) bzw., bei der
+  Speicher-Zuschaltung fürs Auto, über eine "eher voll"-Annahme oberhalb der
+  Reserve (`allowBatteryAssistCharging`, siehe oben). Eine reale
+  Speicher-Telemetrie würde beides durch echte Werte ersetzen können, statt
+  auf Modellannahmen angewiesen zu sein.
+- **Wallbox** hat keine echte API-Anbindung – die App kann nicht steuern oder
+  live auslesen, ob/wie viel gerade tatsächlich geladen wird, nur eine
+  Empfehlung aussprechen.
 - **Wärmepumpen-Verbrauch** ist jetzt temperaturabhängig, sobald eine
   Temperaturprognose vorliegt (siehe oben) – aber weiterhin ein vereinfachtes,
   lineares Modell (kein Gebäude-/Heizlastmodell, keine reale COP-Kennlinie).
@@ -198,7 +212,7 @@ direkt ausgeführt werden. Als Ersatz wurde:
 
 - die gesamte Business-Logik (Planning Engine, Verbrauchsschätzung, PV-/
   Wettermodell, Datumshilfen – alles in `src/lib/`) mit dem in Node.js
-  eingebauten Testrunner **tatsächlich ausgeführt** (65/65 Tests grün, daher
+  eingebauten Testrunner **tatsächlich ausgeführt** (68/68 Tests grün, daher
   jetzt auch der Umstieg von Vitest auf `node --test` als offizieller
   Testrunner des Projekts),
 - die komplette React/JSX-App mit einer lokal vorhandenen esbuild-Kopie

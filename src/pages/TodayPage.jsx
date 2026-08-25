@@ -92,6 +92,11 @@ export default function TodayPage({ data, onUpdateSoc }) {
               </p>
             )}
             {headline?.action === 'NICHT_LADEN' && <p className="hero-window no-charge">Kein Ladebedarf diese Woche</p>}
+            {relevantChargeDay?.energySource && (
+              <span className={`chip energy-source${relevantChargeDay.energySource === 'PV_UND_SPEICHER' ? ' assisted' : ''}`}>
+                {relevantChargeDay.energySource === 'PV_UND_SPEICHER' ? '☀️🔋 PV + Hausspeicher' : '☀️ Nur PV-Überschuss'}
+              </span>
+            )}
             {todayWeather && (
               <span className={`chip ${todayWeather.confidence}`}>
                 <Check size={13} /> {todayWeather.summary}
@@ -114,6 +119,12 @@ export default function TodayPage({ data, onUpdateSoc }) {
               </>
             )}
           </p>
+          {relevantChargeDay?.energySource === 'PV_UND_SPEICHER' && (
+            <p className="hero-reason assist-note">
+              Reiner PV-Überschuss reicht dafür nicht – zusätzlich Hausspeicher-Reserve oberhalb des Ziels eingeplant (Annahme, keine
+              Live-Messung des Speicherstands).
+            </p>
+          )}
         </div>
 
         {todayWeather && (

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { planWeek, carAvailablePvKwh } from './planningEngine.js'
+import { planWeek, carAvailablePvKwh, assumedBatteryAssistKwh } from './planningEngine.js'
 import { estimateConsumption } from './consumption.js'
 import { DEFAULT_SETUP } from './types.js'
 import { addDays } from './date.js'
@@ -33,7 +33,7 @@ function baseInput(overrides = {}) {
     weatherDays: overrides.weatherDays,
     availabilityBlocks: overrides.availabilityBlocks ?? [],
     chargingGoals: overrides.chargingGoals ?? [],
-    setup: DEFAULT_SETUP,
+    setup: overrides.setup ?? DEFAULT_SETUP,
   }
 }
 
@@ -79,6 +79,7 @@ describe('planningEngine / planWeek', () => {
     const wednesday = result.days.find((d) => d.date === '2026-08-19')
     assert.equal(tuesday.action, 'CHARGE')
     assert.equal(wednesday.action, 'NO_CHARGE')
+    assert.equal(tuesday.energySource, 'PV_UEBERSCHUSS', 'reicht der PV-Überschuss allein, darf kein Speicher zugeschaltet werden')
   })
 
   it('TEST 4: Donnerstag Ziel 100%, Mittwoch 07-17 gesperrt, Dienstag gute PV -> Dienstag laden', () => {
@@ -202,6 +203,37 @@ describe('planningEngine / planWeek', () => {
     assert.equal(resultHighSoc.weekMessage, 'Diese Woche nicht laden.')
     assert.ok(resultLowSoc.days.some((d) => d.action === 'CHARGE'), 'bei SoC 20% muss sofort neu geplant werden')
     assert.equal(resultLowSoc.days.find((d) => d.date === today).action, 'CHARGE', 'die 40%-Reserve ist schon unterschritten -> heute laden')
+  })
+
+  it('assumedBatteryAssistKwh: nutzt nur den Anteil oberhalb der Nachtreserve, 0 wenn abgeschaltet', () => {
+    // 15 kWh Kapazität, 70% Reserve -> 30% = 4,5 kWh "Zuschalt"-Budget oberhalb der Reserve.
+    assert.equal(assumedBatteryAssistKwh(DEFAULT_SETUP.houseBattery), 4.5)
+    assert.equal(assumedBatteryAssistKwh({ ...DEFAULT_SETUP.houseBattery, allowBatteryAssistCharging: false }), 0)
+    // Bei 100% Reserve-Ziel bleibt kein Anteil oberhalb übrig.
+    assert.equal(assumedBatteryAssistKwh({ ...DEFAULT_SETUP.houseBattery, nightReservePct: 100 }), 0)
+  })
+
+  it('TEST 13: reicht reiner PV-Überschuss nicht, wird bei aktivierter Option zusätzlich Hausspeicher zugeschaltet, um das Ziel doch zu erreichen', () => {
+    const today = '2026-08-21' // Freitag = Wochenendziel-Deadline selbst, keine Verbrauchs-Verzögerung bis dahin
+    // Sehr geringer PV-Überschuss (3 kWh) - abzüglich der 3-kWh-Vorrangreserve bleibt für
+    // reinen PV-Überschuss 0 kWh fürs Auto übrig. Kleiner Rest-Bedarf (76% -> 80%, 2,08 kWh),
+    // den die 4,5-kWh-Speicherzuschaltung locker deckt, reine PV allein aber nicht.
+    const weatherDays = week(today, [3])
+    const result = planWeek(baseInput({ today, currentSoc: 76, weatherDays }))
+    const chargeDay = result.days.find((d) => d.action === 'CHARGE')
+    assert.ok(chargeDay, 'sollte trotz PV-Überschuss von 0 kWh einen Ladetag finden (dank Speicher-Zuschaltung)')
+    assert.equal(chargeDay.energySource, 'PV_UND_SPEICHER')
+    assert.equal(result.conflicts.length, 0, 'mit Speicher-Zuschaltung sollte das Wochenendziel erreichbar sein, kein "gefährdet"')
+  })
+
+  it('TEST 14: dieselbe Situation ohne Speicher-Zuschaltung (allowBatteryAssistCharging: false) bleibt "gefährdet"', () => {
+    const today = '2026-08-21'
+    const weatherDays = week(today, [3])
+    const setup = { ...DEFAULT_SETUP, houseBattery: { ...DEFAULT_SETUP.houseBattery, allowBatteryAssistCharging: false } }
+    const result = planWeek(baseInput({ today, currentSoc: 76, weatherDays, setup }))
+    assert.ok(result.conflicts.length > 0, 'ohne Speicher-Zuschaltung sollte das Ziel als gefährdet markiert werden')
+    const anyAssisted = result.days.some((d) => d.energySource === 'PV_UND_SPEICHER')
+    assert.equal(anyAssisted, false)
   })
 
   it('TEST 12: eine komplett gesperrte Sperrzeit führt nie zu einem Ladefenster an diesem Tag', () => {

@@ -44,6 +44,22 @@ export function carAvailablePvKwh(weatherDay, houseBatteryConfig) {
   return Math.max(0, weatherDay.pvSurplusEstimateKwh - houseBatteryConfig.dailyReplenishmentReserveKwh)
 }
 
+/**
+ * Wie viel Hausspeicher-Energie zusätzlich zum PV-Überschuss fürs Auto "zugeschaltet"
+ * werden darf, wenn reiner PV-Überschuss ein Ziel an einem Tag nicht erreicht - siehe
+ * findBestChargeDay(). Nutzt bewusst nur den Anteil OBERHALB der konfigurierten
+ * Nachtreserve (houseBattery.nightReservePct) - die Reserve selbst bleibt damit weiterhin
+ * eine harte Grenze (Randbedingung 3). Da die App keine Live-Speicher-SoC-Anbindung hat,
+ * ist das eine Modellannahme ("Speicher ist tagsüber eher voll"), keine Messung - wird
+ * deshalb in reason()/der UI immer klar als "Annahme" gekennzeichnet, nie als Fakt
+ * dargestellt (Abschnitt 33). Über houseBattery.allowBatteryAssistCharging abschaltbar.
+ */
+export function assumedBatteryAssistKwh(houseBatteryConfig) {
+  if (!houseBatteryConfig.allowBatteryAssistCharging) return 0
+  const usableAboveReserve = (houseBatteryConfig.capacityKwh * (100 - houseBatteryConfig.nightReservePct)) / 100
+  return Number(Math.max(0, usableAboveReserve).toFixed(2))
+}
+
 function clipWindowsBefore(freeWindows, maxMinute) {
   return freeWindows
     .map((w) => ({ start: w.start, end: Math.min(w.end, maxMinute) }))
@@ -137,9 +153,23 @@ function findBestChargeDay({ candidateDates, requirement, plannedByDate, current
     if (freeWindows.length === 0) continue // Tag komplett gesperrt
 
     const weatherDay = weatherByDate.get(date)
-    const carKwh = carAvailablePvKwh(weatherDay, setup.houseBattery)
-    const series = pvPowerSeries(date, carKwh, setup.pv, setup.location.lat, STEP_MINUTES)
-    const win = bestChargingWindow(series, STEP_MINUTES, freeWindows, neededEnergyKwh, setup.wallboxKw)
+    const pvOnlyKwh = carAvailablePvKwh(weatherDay, setup.houseBattery)
+    const pvOnlySeries = pvPowerSeries(date, pvOnlyKwh, setup.pv, setup.location.lat, STEP_MINUTES)
+    let win = bestChargingWindow(pvOnlySeries, STEP_MINUTES, freeWindows, neededEnergyKwh, setup.wallboxKw)
+    let energySource = 'PV_UEBERSCHUSS'
+
+    // Reicht reiner PV-Überschuss an diesem Tag nicht aus, optional zusätzlich
+    // Hausspeicher-"Zuschalt"-Energie einplanen (siehe assumedBatteryAssistKwh) -
+    // nur übernehmen, wenn es tatsächlich mehr bringt als die reine PV-Variante.
+    const assistKwh = assumedBatteryAssistKwh(setup.houseBattery)
+    if (!win.reachedTarget && assistKwh > 0) {
+      const boostedSeries = pvPowerSeries(date, pvOnlyKwh + assistKwh, setup.pv, setup.location.lat, STEP_MINUTES)
+      const boostedWin = bestChargingWindow(boostedSeries, STEP_MINUTES, freeWindows, neededEnergyKwh, setup.wallboxKw)
+      if (boostedWin.reachedTarget || boostedWin.energyKwh > win.energyKwh) {
+        win = boostedWin
+        energySource = 'PV_UND_SPEICHER'
+      }
+    }
 
     const candidate = {
       date,
@@ -147,6 +177,7 @@ function findBestChargeDay({ candidateDates, requirement, plannedByDate, current
       requiredStartSoc,
       neededEnergyKwh,
       window: win,
+      energySource,
       pvSurplusEstimateKwh: weatherDay?.pvSurplusEstimateKwh ?? 0,
       confidence: weatherDay?.confidence ?? 'niedrig',
       stale: weatherDay?.stale ?? true,
@@ -183,6 +214,11 @@ function formatReason({ requirement, best, targetSoc }) {
   } else {
     parts.push(
       `Verfügbare PV reicht an diesem Tag voraussichtlich nicht für ${targetSoc} % (nur ~${best.window.energyKwh} kWh erreichbar).`
+    )
+  }
+  if (best.energySource === 'PV_UND_SPEICHER') {
+    parts.push(
+      'Reiner PV-Überschuss reicht dafür nicht - der Plan bezieht zusätzlich Energie aus dem Hausspeicher oberhalb der Reserve (Annahme, keine Live-Messung des Speicherstands).'
     )
   }
   return parts.join(' ')
@@ -287,6 +323,7 @@ export function planWeek(input) {
       expectedEnergyKwh: Number((((targetSoc - best.startSoc) / 100) * setup.vehicle.batteryCapacityKwh).toFixed(1)),
       reason,
       confidence: best.confidence,
+      energySource: best.energySource,
       conflicts: best.window.reachedTarget ? [] : [`${requirement.label} nur teilweise erreichbar`],
       source: requirement.source,
     })
@@ -305,6 +342,7 @@ export function planWeek(input) {
       expectedEnergyKwh: 0,
       reason: 'Kein Ladebedarf an diesem Tag.',
       confidence: weatherDay?.confidence ?? 'mittel',
+      energySource: null,
       conflicts: [],
       source: null,
     }

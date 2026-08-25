@@ -67,6 +67,11 @@
  * @property {number} expectedEnergyKwh
  * @property {string} reason           kurzer, für den Nutzer verständlicher Satz
  * @property {'hoch'|'mittel'|'niedrig'} confidence
+ * @property {'PV_UEBERSCHUSS'|'PV_UND_SPEICHER'|null} energySource  woher die geplante
+ *   Ladeenergie kommt - reiner PV-Überschuss, oder zusätzlich Hausspeicher oberhalb der
+ *   Reserve zugeschaltet (siehe assumedBatteryAssistKwh() in planningEngine.js;
+ *   PV_UND_SPEICHER ist eine Modellannahme, keine Live-Speichermessung). null an
+ *   NO_CHARGE-Tagen.
  * @property {string[]} conflicts
  */
 
@@ -86,6 +91,14 @@ export const DEFAULT_SETUP = {
     // keine Live-SoC-Anbindung an den Hausspeicher hat, ist das eine bewusst
     // vorsichtige Pauschale, kein Messwert.
     dailyReplenishmentReserveKwh: 3,
+    // Erlaubt der Planung, an Tagen, an denen reiner PV-Überschuss ein Ziel nicht
+    // erreicht, zusätzlich Hausspeicher-Energie OBERHALB der obigen Reserve
+    // einzuplanen (siehe assumedBatteryAssistKwh() in planningEngine.js). Die
+    // Reserve selbst bleibt davon unberührt - weiterhin eine harte Grenze
+    // (Randbedingung 3). Da keine Live-Speicher-SoC-Anbindung existiert, ist der
+    // dabei angenommene Betrag eine Modellannahme ("Speicher tagsüber eher voll"),
+    // keine Messung - in der UI deshalb immer als "Annahme" gekennzeichnet.
+    allowBatteryAssistCharging: true,
   },
   wallboxKw: 11,
   vehicle: {

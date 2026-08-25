@@ -319,6 +319,33 @@ textarea {
   border-color: rgba(255, 123, 123, 0.4);
 }
 
+/* Woher die Ladeenergie kommt (reiner PV-Überschuss vs. zusätzlich Hausspeicher
+   zugeschaltet) - bewusst eigene, neutrale Farbe statt der Konfidenz-Farben, damit es
+   nicht wie eine weitere Sicherheits-/Konfidenzangabe aussieht. */
+.chip.energy-source {
+  color: var(--text-1);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--glass-border);
+  margin-right: 6px;
+}
+
+.chip.energy-source.assisted {
+  color: var(--accent-strong);
+  background: linear-gradient(180deg, rgba(94, 200, 255, 0.24), rgba(94, 200, 255, 0.1));
+  border-color: rgba(94, 200, 255, 0.4);
+}
+
+.assist-note {
+  font-size: 11.5px;
+  color: var(--text-2);
+  font-style: italic;
+}
+
+.day-action.energy-source-line {
+  color: var(--text-2);
+  font-size: 12px;
+}
+
 .confidence-row {
   display: flex;
   align-items: center;
