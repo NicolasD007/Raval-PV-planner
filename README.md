@@ -39,7 +39,21 @@ getestet) – nicht nur eine Beschreibung geplanter Funktionen.
 - **Persistenz**: ausschließlich `localStorage`, kein Backend.
 - **PWA**: Manifest, Service Worker mit Offline-Shell, Apple-Meta-Tags,
   installierbar auf dem iPhone-Homescreen.
-- **Tests**: 37 Unit-/Integrationstests (Node.js `node:test`, siehe unten).
+- **Verlauf/Auswertung** (`src/lib/history.js`, SoC-Tab): archiviert täglich
+  automatisch, was die App empfohlen hat (Aktion, Ladefenster, Ziel-SoC,
+  Prognose), und zeigt dazu den real gemessenen Folge-SoC aus der SoC-Historie
+  – kein automatisches "hat geklappt/nicht geklappt"-Urteil (Abschnitt 33:
+  nichts erfinden, keine Live-Messung von echten Ladevorgängen), sondern eine
+  ehrliche Gegenüberstellung, mit der man selbst beurteilen kann, ob der Plan
+  aufgegangen ist.
+- **Backup/Export** (Setup-Tab): SoC-Historie, Ziele, Sperrzeiten, Setup und
+  Verlauf lassen sich als JSON-Datei exportieren und wieder importieren –
+  einzige Absicherung gegen Datenverlust, da alles nur in `localStorage` liegt.
+- **Visualisierung**: PV-Wochenprognose als Balkendiagramm (`PvBarChart.jsx`,
+  Woche-Tab) und SoC-Verlauf als Liniendiagramm (`SocChart.jsx`, SoC-Tab,
+  inkl. Referenzlinien für Fahrzeug-Reserve/Wochenendziel) – reines SVG/CSS,
+  keine Chart-Bibliothek.
+- **Tests**: 59 Unit-/Integrationstests (Node.js `node:test`, siehe unten).
 
 ## Lokal starten
 
@@ -58,7 +72,7 @@ npm test
 
 Nutzt bewusst den in Node.js eingebauten Testrunner (`node --test`) statt
 Vitest – keine zusätzliche Test-Abhängigkeit, läuft überall ohne weiteren
-Installationsschritt. 47 Tests decken u. a. alle 12 in der Spec geforderten
+Installationsschritt. 59 Tests decken u. a. alle 12 in der Spec geforderten
 Planning-Engine-Fälle ab (`src/lib/planningEngine.test.mjs`):
 
 | # | Szenario |
@@ -76,7 +90,8 @@ Planning-Engine-Fälle ab (`src/lib/planningEngine.test.mjs`):
 | 11 | Neuer SoC → Planung wird sofort neu berechnet |
 | 12 | Sperrzeit → nie ein Ladefenster innerhalb dieser Zeit |
 
-Weitere Tests: `date.test.mjs`, `pvModel.test.mjs`, `weather.test.mjs`.
+Weitere Tests: `date.test.mjs`, `pvModel.test.mjs`, `weather.test.mjs`,
+`houseLoad.test.mjs`, `history.test.mjs`.
 
 ## Lint
 
@@ -118,7 +133,14 @@ Diese Werte wurden im Klärungsgespräch festgelegt und sind in
 - Hausverbrauch: 7,7 kWh/Tag (Winter, Okt–Mär) bzw. 4,0 kWh/Tag (Sommer,
   Apr–Sep) – fester Stufenwert, kein weicher saisonaler Verlauf.
 - Wärmepumpe: 16 kWh/Tag Winter, rechnerisch ≈ 3,3 kWh/Tag Sommer (aus der
-  Jahressumme 3.500 kWh abgeleitet).
+  Jahressumme 3.500 kWh abgeleitet) – das sind weiterhin die Referenzwerte,
+  aber der tatsächlich verwendete Tageswert berücksichtigt jetzt, wenn eine
+  Temperaturprognose vorliegt, die Tagesmitteltemperatur (`src/lib/houseLoad.js`,
+  `heatPumpKwhForTemp()`): linear interpoliert zwischen dem Sommer-Sockelwert
+  (ab Heizgrenze 15 °C) und dem Winterwert bei einer angenommenen typischen
+  Winter-Mitteltemperatur von 3 °C (Allgäu, ca. 700 m ü. NN – eine
+  Modellannahme, keine Klimareihe). Ohne Temperaturprognose (z. B. Wetterdaten
+  nicht verfügbar) fällt es auf den alten festen Saison-Stufenwert zurück.
 - Speicher-Vorrangreserve fürs Auto (`houseBattery.dailyReplenishmentReserveKwh`,
   3 kWh): Da die App **keine Live-Anbindung an den Hausspeicher-SoC** hat,
   wird vom PV-Überschuss eines Tages pauschal ein konservativer Puffer
@@ -136,8 +158,9 @@ Diese Werte wurden im Klärungsgespräch festgelegt und sind in
   spürbar verbessern.
 - **Hausspeicher-SoC** wird nicht live erfasst (siehe oben) – nur über eine
   feste Pauschalreserve modelliert.
-- **Wärmepumpen-Verbrauch** ist ein fester Saisonwert, keine
-  außentemperaturabhängige Berechnung.
+- **Wärmepumpen-Verbrauch** ist jetzt temperaturabhängig, sobald eine
+  Temperaturprognose vorliegt (siehe oben) – aber weiterhin ein vereinfachtes,
+  lineares Modell (kein Gebäude-/Heizlastmodell, keine reale COP-Kennlinie).
 - **Web-Push-Benachrichtigungen** (z. B. "heute laden!" ohne die App zu
   öffnen) sind nicht implementiert – eine iPhone-PWA kann ohne eigenen
   Push-Server nicht zuverlässig im Hintergrund aufwachen, und ein Push-Server
@@ -153,7 +176,7 @@ direkt ausgeführt werden. Als Ersatz wurde:
 
 - die gesamte Business-Logik (Planning Engine, Verbrauchsschätzung, PV-/
   Wettermodell, Datumshilfen – alles in `src/lib/`) mit dem in Node.js
-  eingebauten Testrunner **tatsächlich ausgeführt** (37/47 Tests grün, daher
+  eingebauten Testrunner **tatsächlich ausgeführt** (59/59 Tests grün, daher
   jetzt auch der Umstieg von Vitest auf `node --test` als offizieller
   Testrunner des Projekts),
 - die komplette React/JSX-App mit einer lokal vorhandenen esbuild-Kopie
@@ -172,6 +195,7 @@ funktionieren.
 ## Datenmodell
 
 Siehe `src/lib/types.js` (JSDoc-Typen: `SocEntry`, `ChargingGoal`,
-`AvailabilityBlock`, `WeatherDay`, `Plan`). Bewusst JavaScript + JSDoc statt
+`AvailabilityBlock`, `WeatherDay`, `Plan`) sowie `PlanHistoryEntry` in
+`src/lib/history.js` (Verlauf/Auswertung). Bewusst JavaScript + JSDoc statt
 TypeScript, um am bestehenden Projekt-Setup (`main.jsx`, keine `.ts`-Dateien)
 anzuknüpfen, statt die Toolchain grundlegend umzustellen.

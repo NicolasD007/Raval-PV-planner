@@ -10,7 +10,12 @@ const KEYS = {
   setup: 'raval.setup',
   lastPlan: 'raval.lastPlan',
   lastWeather: 'raval.lastWeather',
+  planHistory: 'raval.planHistory',
 }
+
+// Wie viele Tage an archivierten Tages-Empfehlungen (Verlauf/Auswertung)
+// maximal aufgehoben werden, damit localStorage nicht unbegrenzt wächst.
+const MAX_PLAN_HISTORY_DAYS = 90
 
 function read(key, fallback) {
   try {
@@ -144,4 +149,80 @@ export function getLastWeather() {
 
 export function setLastWeather(weatherDays) {
   write(KEYS.lastWeather, { weatherDays, savedAt: new Date().toISOString() })
+}
+
+// --- Verlauf/Auswertung: archivierte Tages-Empfehlungen ------------------
+// (Bugfix/Feature: "was hat die App empfohlen" nachträglich nachvollziehbar
+// machen, siehe history.js für die Zusammenführung mit der SoC-Historie.)
+
+export function getPlanHistory() {
+  return read(KEYS.planHistory, [])
+}
+
+/** Legt die Tages-Empfehlung ab bzw. überschreibt sie, falls für dieses Datum schon eine existiert. */
+export function recordPlanSnapshot(entry) {
+  const history = getPlanHistory()
+  const idx = history.findIndex((e) => e.date === entry.date)
+  if (idx >= 0) history[idx] = entry
+  else history.push(entry)
+  history.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+  write(KEYS.planHistory, history.slice(-MAX_PLAN_HISTORY_DAYS))
+}
+
+// --- Backup/Export ---------------------------------------------------------
+// Da alles ausschließlich in localStorage liegt, gehen SoC-Historie, Ziele,
+// Sperrzeiten und Setup bei gelöschtem Browser-Speicher (privates Fenster,
+// "Website-Daten löschen", Gerätewechsel) komplett verloren. Export/Import als
+// einfache JSON-Datei ist die minimale Absicherung dagegen - kein Backend nötig.
+
+const BACKUP_VERSION = 1
+
+export function exportBackupData() {
+  return {
+    backupVersion: BACKUP_VERSION,
+    exportedAt: new Date().toISOString(),
+    setup: read(KEYS.setup, null),
+    socHistory: getSocHistory(),
+    goals: getGoals(),
+    availability: getAvailabilityBlocks(),
+    planHistory: getPlanHistory(),
+  }
+}
+
+/**
+ * Spielt ein zuvor exportiertes Backup ein. Überschreibt nur die Felder, die im
+ * Backup tatsächlich vorhanden und vom erwarteten Typ sind - ein unvollständiges
+ * oder fremdes JSON soll nicht den kompletten lokalen Datenbestand zerstören.
+ * @param {any} data
+ * @returns {string[]} Liste der tatsächlich importierten Bereiche (für die UI-Rückmeldung)
+ */
+export function importBackupData(data) {
+  if (!data || typeof data !== 'object') {
+    throw new Error('Datei ist kein gültiges Backup (kein JSON-Objekt).')
+  }
+  const imported = []
+  if (data.setup && typeof data.setup === 'object') {
+    write(KEYS.setup, data.setup)
+    imported.push('Setup')
+  }
+  if (Array.isArray(data.socHistory)) {
+    write(KEYS.socHistory, data.socHistory)
+    imported.push('SoC-Historie')
+  }
+  if (Array.isArray(data.goals)) {
+    write(KEYS.goals, data.goals)
+    imported.push('Ladeziele')
+  }
+  if (Array.isArray(data.availability)) {
+    write(KEYS.availability, data.availability)
+    imported.push('Sperrzeiten')
+  }
+  if (Array.isArray(data.planHistory)) {
+    write(KEYS.planHistory, data.planHistory)
+    imported.push('Verlauf')
+  }
+  if (imported.length === 0) {
+    throw new Error('Datei enthält keine erkennbaren Backup-Felder.')
+  }
+  return imported
 }

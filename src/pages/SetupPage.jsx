@@ -1,4 +1,5 @@
-import { RefreshCw } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { RefreshCw, Download, Upload } from 'lucide-react'
 
 function Row({ label, value }) {
   return (
@@ -10,7 +11,44 @@ function Row({ label, value }) {
 }
 
 export default function SetupPage({ data }) {
-  const { setup, updateSetup, reloadWeather, weatherLoading } = data
+  const { setup, updateSetup, reloadWeather, weatherLoading, exportBackup, importBackup } = data
+  const fileInputRef = useRef(null)
+  const [backupMessage, setBackupMessage] = useState(null)
+
+  const handleExport = () => {
+    const backup = exportBackup()
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `raval-pv-planner-backup-${backup.exportedAt.slice(0, 10)}.json`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+    setBackupMessage({ type: 'ok', text: 'Backup wurde heruntergeladen.' })
+  }
+
+  const handleImportClick = () => {
+    if (!window.confirm('Import überschreibt SoC-Historie, Ziele, Sperrzeiten, Setup und Verlauf auf diesem Gerät mit dem Inhalt der Datei. Fortfahren?')) {
+      return
+    }
+    fileInputRef.current?.click()
+  }
+
+  const handleFileChange = async (event) => {
+    const file = event.target.files?.[0]
+    event.target.value = '' // gleiche Datei später erneut auswählbar machen
+    if (!file) return
+    try {
+      const text = await file.text()
+      const parsed = JSON.parse(text)
+      const imported = importBackup(parsed)
+      setBackupMessage({ type: 'ok', text: `Importiert: ${imported.join(', ')}.` })
+    } catch (err) {
+      setBackupMessage({ type: 'error', text: err.message ?? 'Import fehlgeschlagen.' })
+    }
+  }
 
   return (
     <main style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -85,6 +123,30 @@ export default function SetupPage({ data }) {
         <button className="btn-secondary" style={{ marginTop: 10, width: '100%' }} onClick={reloadWeather} disabled={weatherLoading}>
           <RefreshCw size={16} /> {weatherLoading ? 'Aktualisiere…' : 'Wetterdaten neu laden'}
         </button>
+      </section>
+
+      <section>
+        <p className="section-title">Daten &amp; Backup</p>
+        <div className="glass-card compact" style={{ marginTop: 10 }}>
+          <p className="hero-reason" style={{ marginBottom: 12 }}>
+            Alle Daten liegen ausschließlich lokal auf diesem Gerät (localStorage). Ohne Backup gehen SoC-Historie, Ziele,
+            Sperrzeiten und Verlauf verloren, falls der Browser-Speicher gelöscht wird.
+          </p>
+          <div className="row-gap">
+            <button className="btn-secondary" onClick={handleExport}>
+              <Download size={16} /> Exportieren
+            </button>
+            <button className="btn-secondary" onClick={handleImportClick}>
+              <Upload size={16} /> Importieren
+            </button>
+          </div>
+          <input ref={fileInputRef} type="file" accept="application/json" style={{ display: 'none' }} onChange={handleFileChange} />
+          {backupMessage && (
+            <p className="hero-reason" style={{ marginTop: 10, color: backupMessage.type === 'error' ? 'var(--bad)' : 'var(--good)' }}>
+              {backupMessage.text}
+            </p>
+          )}
+        </div>
       </section>
 
       <p className="empty-hint">Alle Daten werden ausschließlich lokal auf diesem Gerät gespeichert (localStorage).</p>

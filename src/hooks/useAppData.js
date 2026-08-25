@@ -5,6 +5,8 @@ import { estimateConsumption } from '../lib/consumption.js'
 import { fetchWeatherWeek } from '../lib/weather.js'
 import { planWeek } from '../lib/planningEngine.js'
 import { toISODate, addDays } from '../lib/date.js'
+import { estimateHouseLoadKwh } from '../lib/houseLoad.js'
+import { buildHistoryView } from '../lib/history.js'
 
 /**
  * Zentraler App-State: lädt alles aus localStorage, holt die Wetterprognose,
@@ -21,18 +23,11 @@ export function useAppData() {
   const [weatherStale, setWeatherStale] = useState(true)
   const [weatherLoading, setWeatherLoading] = useState(true)
   const [weatherError, setWeatherError] = useState(null)
+  const [planHistory, setPlanHistory] = useState(() => storage.getPlanHistory())
 
-  const houseLoadForDay = useCallback(
-    (isoDate) => {
-      // Grobe Saison-Regel (Klärung Punkt 2/3): Okt-Mär = Winterwert, Apr-Sep = Sommerwert.
-      const month = Number(isoDate.slice(5, 7))
-      const isWinter = month <= 3 || month >= 10
-      const household = isWinter ? setup.household.winterKwhPerDay : setup.household.summerKwhPerDay
-      const heatPump = setup.heatPump.active ? (isWinter ? setup.heatPump.winterKwhPerDay : setup.heatPump.summerKwhPerDay) : 0
-      return household + heatPump
-    },
-    [setup]
-  )
+  // Haus-/Wärmepumpenlast: nutzt die Tagesmitteltemperatur aus der Wetterprognose,
+  // wenn vorhanden (houseLoad.js), sonst den festen Saison-Stufenwert.
+  const houseLoadForDay = useCallback((isoDate, meanTempC) => estimateHouseLoadKwh(isoDate, meanTempC, setup), [setup])
 
   const loadWeather = useCallback(async () => {
     setWeatherLoading(true)
@@ -80,6 +75,11 @@ export function useAppData() {
         pvSurplusEstimateKwh: 0,
         confidence: 'niedrig',
         sourceAgreement: 0,
+        modelsUsed: 0,
+        precipitationMm: null,
+        sunHours: null,
+        tempMinC: null,
+        tempMaxC: null,
         stale: true,
       }))
     const result = planWeek({
@@ -95,6 +95,30 @@ export function useAppData() {
     storage.setLastPlan(result)
     return result
   }, [latestEntry, consumption, weatherDays, blocks, goals, setup])
+
+  // Verlauf/Auswertung: archiviert die Empfehlung für "heute" jedes Mal, wenn
+  // sich die Planung ändert (z.B. nach einem neuen SoC-Eintrag). Vergangene
+  // Tage werden dabei nie angefasst - sobald ein Tag nicht mehr "heute" ist,
+  // bleibt sein archivierter Stand als Verlaufs-Eintrag stehen (Abschnitt 33:
+  // nichts nachträglich umschreiben).
+  useEffect(() => {
+    if (!plan?.days?.length) return
+    const todayPlan = plan.days[0]
+    const todayWeather = weatherDays.find((w) => w.date === todayPlan.date)
+    storage.recordPlanSnapshot({
+      date: todayPlan.date,
+      action: todayPlan.action,
+      chargingWindow: todayPlan.chargingWindow,
+      targetSoc: todayPlan.targetSoc,
+      confidence: todayWeather?.confidence ?? 'niedrig',
+      pvEstimateKwh: todayWeather?.pvEstimateKwh ?? 0,
+      weatherSummary: todayWeather?.summary ?? '',
+      recordedAt: new Date().toISOString(),
+    })
+    setPlanHistory(storage.getPlanHistory())
+  }, [plan, weatherDays])
+
+  const planHistoryView = useMemo(() => buildHistoryView(planHistory, socHistory), [planHistory, socHistory])
 
   // --- Aktionen -----------------------------------------------------------
 
@@ -131,6 +155,19 @@ export function useAppData() {
     })
   }, [])
 
+  // Backup/Export: reine Datenübergabe an storage.js, siehe dort für das Format.
+  const exportBackup = useCallback(() => storage.exportBackupData(), [])
+
+  const importBackup = useCallback((data) => {
+    const imported = storage.importBackupData(data)
+    setSetupState(storage.getSetup(DEFAULT_SETUP))
+    setSocHistory(storage.getSocHistory())
+    setGoals(storage.getGoals())
+    setBlocks(storage.getAvailabilityBlocks())
+    setPlanHistory(storage.getPlanHistory())
+    return imported
+  }, [])
+
   return {
     setup,
     socHistory,
@@ -143,6 +180,7 @@ export function useAppData() {
     weatherError,
     consumption,
     plan,
+    planHistoryView,
     reloadWeather: loadWeather,
     updateSoc,
     saveGoal,
@@ -150,5 +188,7 @@ export function useAppData() {
     saveBlock,
     removeBlock,
     updateSetup,
+    exportBackup,
+    importBackup,
   }
 }

@@ -1,9 +1,19 @@
 import { Plus } from 'lucide-react'
 import { historyRows } from '../lib/consumption.js'
+import { parseISODate } from '../lib/date.js'
+import SocChart from '../components/SocChart.jsx'
+
+const CONFIDENCE_LABEL = { hoch: 'Hoch', mittel: 'Mittel', niedrig: 'Niedrig' }
+const ACTION_LABEL = { CHARGE: 'Laden empfohlen', NO_CHARGE: 'Nicht laden', WAIT: 'Abwarten' }
 
 export default function SocPage({ data, onUpdateSoc }) {
-  const { latestEntry, consumption, socHistory } = data
+  const { latestEntry, consumption, socHistory, setup, planHistoryView } = data
   const rows = historyRows(socHistory)
+
+  const chartThresholds = [
+    { value: setup.vehicle.safetyReservePct, label: 'Fahrzeug-Reserve', color: 'var(--bad)' },
+    { value: setup.weekend.targetPct, label: 'Wochenendziel', color: 'var(--accent-strong)' },
+  ]
 
   return (
     <main style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -13,6 +23,13 @@ export default function SocPage({ data, onUpdateSoc }) {
         {latestEntry && (
           <p className="hero-reason">Stand: {new Date(latestEntry.timestamp).toLocaleString('de-DE')}</p>
         )}
+      </section>
+
+      <section className="glass-card">
+        <p className="stat-label" style={{ marginBottom: 10 }}>
+          SoC-Verlauf
+        </p>
+        <SocChart entries={socHistory} thresholds={chartThresholds} />
       </section>
 
       <section className="glass-card">
@@ -36,6 +53,34 @@ export default function SocPage({ data, onUpdateSoc }) {
       <button className="btn-primary" onClick={onUpdateSoc}>
         <Plus size={18} /> SoC aktualisieren
       </button>
+
+      <p className="section-title">Verlauf &amp; Auswertung</p>
+      <section className="glass-card compact">
+        {planHistoryView.length === 0 ? (
+          <p className="empty-hint">Noch keine archivierten Empfehlungen – die App merkt sich ab jetzt jeden Tag, was empfohlen wurde.</p>
+        ) : (
+          planHistoryView.slice(0, 14).map((entry) => (
+            <div className="day-row" key={entry.date}>
+              <div className="day-label">{parseISODate(entry.date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}</div>
+              <div className="day-body">
+                <div className="day-summary">
+                  <span>{ACTION_LABEL[entry.action] ?? entry.action}</span>
+                  <span className={`badge ${entry.confidence}`}>{CONFIDENCE_LABEL[entry.confidence] ?? entry.confidence}</span>
+                </div>
+                <div className="day-action">
+                  Prognose: {entry.weatherSummary || '–'} · ~{Math.round(entry.pvEstimateKwh)} kWh PV
+                  {entry.action === 'CHARGE' && entry.chargingWindow && ` · Ziel ${entry.targetSoc} %`}
+                </div>
+                <div className="day-action">
+                  {entry.actualSocAfter != null
+                    ? `Tatsächlicher SoC danach: ${entry.actualSocAfter} %`
+                    : 'Kein SoC-Eintrag im Anschluss gefunden'}
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </section>
 
       <p className="section-title">Historie</p>
       <section className="glass-card compact">

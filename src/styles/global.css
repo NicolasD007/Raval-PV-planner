@@ -829,6 +829,94 @@ table.history-table td.excluded {
   font-weight: 600;
 }
 
+/* --- SoC-Verlaufsdiagramm (SocChart.jsx) --------------------------------- */
+
+.soc-chart {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.chart-gridline {
+  stroke: rgba(255, 255, 255, 0.08);
+  stroke-width: 1;
+}
+
+.chart-threshold {
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  opacity: 0.6;
+}
+
+.chart-line {
+  stroke: var(--accent-strong);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.chart-dot {
+  fill: var(--accent-strong);
+  stroke: var(--bg-1);
+  stroke-width: 1;
+}
+
+.chart-axis-label {
+  fill: var(--text-2);
+  font-size: 8px;
+}
+
+/* --- PV-Wochen-Balkendiagramm (PvBarChart.jsx) --------------------------- */
+
+.pv-bar-chart {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 6px;
+  height: 140px;
+}
+
+.pv-bar-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  min-width: 0;
+}
+
+.pv-bar-value {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-1);
+}
+
+.pv-bar-track {
+  flex: 1;
+  width: 100%;
+  max-width: 22px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.22);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+}
+
+.pv-bar-fill {
+  width: 100%;
+  border-radius: 8px 8px 0 0;
+  transition: height 0.4s var(--ease-spring);
+  opacity: 0.85;
+}
+
+.pv-bar-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
 @media (min-width: 480px) {
   .app-shell {
     padding-left: 24px;

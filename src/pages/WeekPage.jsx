@@ -1,4 +1,5 @@
 import { weekdayNameDE } from '../lib/date.js'
+import PvBarChart from '../components/PvBarChart.jsx'
 
 const CONFIDENCE_LABEL = { hoch: 'Hoch', mittel: 'Mittel', niedrig: 'Niedrig' }
 
@@ -13,9 +14,27 @@ export default function WeekPage({ data }) {
     )
   }
 
+  const chartDays = plan.days.map((day) => {
+    const weather = weatherDays.find((w) => w.date === day.date)
+    return {
+      date: day.date,
+      weekdayLabel: weekdayNameDE(day.date),
+      pvEstimateKwh: weather?.pvEstimateKwh ?? 0,
+      confidence: weather?.confidence,
+    }
+  })
+
   return (
     <main style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <p className="section-title">Wochenübersicht</p>
+
+      <section className="glass-card">
+        <p className="stat-label" style={{ marginBottom: 10 }}>
+          PV-Prognose (kWh/Tag)
+        </p>
+        <PvBarChart days={chartDays} />
+      </section>
+
       <section className="glass-card">
         {plan.days.map((day) => {
           const weather = weatherDays.find((w) => w.date === day.date)
