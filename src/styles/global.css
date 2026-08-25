@@ -309,6 +309,15 @@ h3 {
   flex-wrap: wrap;
 }
 
+.day-row .day-weather-details {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--text-2);
+  margin-top: 2px;
+}
+
 .day-row .day-action {
   font-size: 13px;
   margin-top: 4px;

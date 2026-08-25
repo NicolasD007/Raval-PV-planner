@@ -35,6 +35,17 @@ export default function WeekPage({ data }) {
                     </span>
                   )}
                 </div>
+                {weather && (weather.sunHours != null || weather.tempMinC != null || weather.precipitationMm != null) && (
+                  <div className="day-weather-details">
+                    {weather.sunHours != null && <span>☀️ {weather.sunHours} h Sonne</span>}
+                    {weather.tempMinC != null && weather.tempMaxC != null && (
+                      <span>
+                        🌡️ {weather.tempMinC}–{weather.tempMaxC} °C
+                      </span>
+                    )}
+                    {weather.precipitationMm != null && <span>🌧️ {weather.precipitationMm} mm</span>}
+                  </div>
+                )}
                 {dayBlocks.length > 0 && (
                   <div className="day-action">
                     🚗 Auto benötigt {dayBlocks.map((b) => `${b.startTime}–${b.endTime}`).join(', ')}

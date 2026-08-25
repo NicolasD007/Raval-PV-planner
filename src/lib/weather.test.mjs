@@ -31,6 +31,17 @@ describe('weather / PV-Konsens', () => {
     assert.ok(scattered.sourceAgreement < consistent.sourceAgreement)
   })
 
+  it('gelockerte Schwellenwerte: stärkere Modellstreuung (typisch für mehrtägige Strahlungsprognosen) gilt jetzt als "mittel" statt "niedrig"', () => {
+    // Streuung mit Variationskoeffizient ~48% - realistisch für 3-5 Tage vorausliegende
+    // Strahlungsprognosen zwischen ECMWF/GFS/ICON/UKMO/Météo-France, auch bei insgesamt
+    // stabilem Wetter. Mit den ursprünglichen, strengeren Schwellen (mittel erst ab
+    // sourceAgreement>=0.6, hier aber nur 0.52) wäre das noch "niedrig" gewesen - dieser
+    // Test belegt die bewusste Lockerung (mittel jetzt schon ab sourceAgreement>=0.35).
+    const moderatelyScattered = combineModelEstimates([20, 35, 15, 40, 10], 10, 5)
+    assert.equal(moderatelyScattered.confidence, 'mittel')
+    assert.notEqual(moderatelyScattered.confidence, 'niedrig')
+  })
+
   it('reduziert die Sicherheit, wenn weniger Modelle antworten als angefragt (auch bei perfekter Übereinstimmung)', () => {
     // Nur 2 von 5 angefragten Modellen haben tatsächlich Daten geliefert.
     const result = combineModelEstimates([40, 40], 10, 5)
@@ -82,6 +93,42 @@ describe('weather / PV-Konsens', () => {
       assert.equal(days[0].icon, '☀️')
       assert.equal(days[1].icon, '⛈️')
       assert.match(days[1].summary, /Gewitter/)
+    })
+
+    it('extrahiert Sonnenstunden, Temperaturspanne und Niederschlagsmenge pro Tag', () => {
+      const hourly = {
+        time: times,
+        [`shortwave_radiation_${WEATHER_MODELS[0].id}`]: [400, 420, 100, 90],
+        [`shortwave_radiation_${WEATHER_MODELS[1].id}`]: [410, 430, 110, 95],
+        [`temperature_2m_${WEATHER_MODELS[0].id}`]: [18, 22, 5, 8],
+        [`temperature_2m_${WEATHER_MODELS[1].id}`]: [19, 24, 4, 9],
+        [`sunshine_duration_${WEATHER_MODELS[0].id}`]: [1800, 3600, 0, 0], // Sekunden
+        [`sunshine_duration_${WEATHER_MODELS[1].id}`]: [1800, 3600, 0, 600],
+        precipitation: [0, 0, 3, 2],
+      }
+      const days = parseForecastResponse({ hourly }, PV_CONFIG, () => 5)
+
+      // Tag 1: 18-24°C über beide Modelle, je 1.5h Sonne (5400s/2/3600 = 1.5h)
+      assert.equal(days[0].tempMinC, 18)
+      assert.equal(days[0].tempMaxC, 24)
+      assert.equal(days[0].sunHours, 1.5)
+      assert.equal(days[0].precipitationMm, 0)
+
+      // Tag 2: 4-9°C, kaum Sonne, 5mm Regen (Summe über beide Stunden: 3+2)
+      assert.equal(days[1].tempMinC, 4)
+      assert.equal(days[1].tempMaxC, 9)
+      assert.equal(days[1].precipitationMm, 5)
+    })
+
+    it('liefert null statt erfundener Werte, wenn die API keine Temperatur-/Sonnenscheinserie enthält', () => {
+      const hourly = {
+        time: times,
+        [`shortwave_radiation_${WEATHER_MODELS[0].id}`]: [400, 420, 100, 90],
+      }
+      const days = parseForecastResponse({ hourly }, PV_CONFIG, () => 5)
+      assert.equal(days[0].tempMinC, null)
+      assert.equal(days[0].tempMaxC, null)
+      assert.equal(days[0].sunHours, null)
     })
   })
 })

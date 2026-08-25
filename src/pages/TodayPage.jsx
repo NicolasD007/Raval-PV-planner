@@ -70,6 +70,22 @@ export default function TodayPage({ data, onUpdateSoc }) {
           <p className="stat-label">Prognosesicherheit</p>
           <p className="stat-value">{CONFIDENCE_LABEL[todayWeather?.confidence] ?? '–'}</p>
         </div>
+        <div className="glass-card stat-card">
+          <p className="stat-label">Sonnenstunden</p>
+          <p className="stat-value">{todayWeather?.sunHours != null ? `${todayWeather.sunHours} h` : '–'}</p>
+        </div>
+        <div className="glass-card stat-card">
+          <p className="stat-label">Temperatur</p>
+          <p className="stat-value">
+            {todayWeather?.tempMinC != null && todayWeather?.tempMaxC != null
+              ? `${todayWeather.tempMinC}–${todayWeather.tempMaxC} °C`
+              : '–'}
+          </p>
+        </div>
+        <div className="glass-card stat-card">
+          <p className="stat-label">Niederschlag</p>
+          <p className="stat-value">{todayWeather?.precipitationMm != null ? `${todayWeather.precipitationMm} mm` : '–'}</p>
+        </div>
       </div>
 
       <button className="btn-primary" onClick={onUpdateSoc}>

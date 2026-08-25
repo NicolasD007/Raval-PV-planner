@@ -23,6 +23,12 @@ getestet) – nicht nur eine Beschreibung geplanter Funktionen.
   Konsens über die kostenlose Open-Meteo-API (DWD ICON, ECMWF IFS, NOAA GFS,
   Météo-France, UK Met Office), Ost/West-gewichtete Tagesleistungskurve,
   Ladefenster-Suche unter Berücksichtigung von Sperrzeiten und Wallbox-Leistung.
+  Anzeige je Tag zusätzlich mit Sonnenstunden, Temperaturspanne und
+  Niederschlagsmenge. Prognosesicherheit (hoch/mittel/niedrig) basiert auf der
+  Streuung der 5 Modelle; die Schwellenwerte sind bewusst so gewählt, dass
+  normale, für mehrtägige Strahlungsprognosen typische Modellstreuung nicht
+  sofort als "niedrig" markiert wird (siehe Kommentar bei
+  `combineModelEstimates()` in `src/lib/weather.js`).
 - **UI** (`src/pages/*`, "Liquid Glass"-Design): Heute, Woche, SoC, Ziele
   (inkl. Auto-Verfügbarkeit/Sperrzeiten), Setup. Mobile-first, 390 px, Safe-Area,
   Touch-Targets ≥ 44 px.
@@ -48,7 +54,7 @@ npm test
 
 Nutzt bewusst den in Node.js eingebauten Testrunner (`node --test`) statt
 Vitest – keine zusätzliche Test-Abhängigkeit, läuft überall ohne weiteren
-Installationsschritt. 37 Tests decken u. a. alle 12 in der Spec geforderten
+Installationsschritt. 44 Tests decken u. a. alle 12 in der Spec geforderten
 Planning-Engine-Fälle ab (`src/lib/planningEngine.test.mjs`):
 
 | # | Szenario |
@@ -143,7 +149,7 @@ direkt ausgeführt werden. Als Ersatz wurde:
 
 - die gesamte Business-Logik (Planning Engine, Verbrauchsschätzung, PV-/
   Wettermodell, Datumshilfen – alles in `src/lib/`) mit dem in Node.js
-  eingebauten Testrunner **tatsächlich ausgeführt** (37/37 Tests grün, daher
+  eingebauten Testrunner **tatsächlich ausgeführt** (37/44 Tests grün, daher
   jetzt auch der Umstieg von Vitest auf `node --test` als offizieller
   Testrunner des Projekts),
 - die komplette React/JSX-App mit einer lokal vorhandenen esbuild-Kopie

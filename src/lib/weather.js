@@ -25,6 +25,11 @@ export const WEATHER_MODELS = [
 /** Performance Ratio: Wirkungsgradverlust durch Wechselrichter, Temperatur, Verkabelung etc. */
 const PERFORMANCE_RATIO = 0.8
  
+// Ab welcher Modell-Übereinstimmung (sourceAgreement, 0-1) gilt eine Prognose als
+// "hoch" bzw. "mittel" sicher (siehe combineModelEstimates()).
+const HIGH_AGREEMENT_THRESHOLD = 0.65
+const MEDIUM_AGREEMENT_THRESHOLD = 0.35
+ 
 /**
  * Rechnet stündliche Globalstrahlungswerte (W/m², wie von Open-Meteo geliefert)
  * eines Tages in eine PV-Ertragsschätzung (kWh) um. Vereinfachtes, aber
@@ -67,9 +72,17 @@ export function combineModelEstimates(pvKwhByModel, houseLoadKwh, modelsExpected
   }
   if (n <= 1) sourceAgreement = Math.min(sourceAgreement, 0.5)
  
+  // Schwellenwerte bewusst gelockert (Nutzer-Feedback: mit den ursprünglich strengen
+  // Werten - hoch ab CoV<=15%, mittel ab CoV<=40% - stand bei praktisch jeder
+  // Prognose >2 Tage im Voraus "Niedrig", weil sich Globalstrahlungs-Prognosen
+  // verschiedener NWP-Modelle (Wolken-/Konvektionsphysik) selbst bei insgesamt
+  // stabilem Wetter oft um 20-40% unterscheiden. Das war technisch "korrekt" im
+  // Sinne der reinen Modell-Streuung, aber in der Praxis zu streng, um noch
+  // hilfreich zwischen "wirklich unsicher" und "normale Modellstreuung" zu
+  // unterscheiden. Jetzt: hoch ab CoV<=35%, mittel ab CoV<=65%.
   let confidence = 'niedrig'
-  if (sourceAgreement >= 0.85) confidence = 'hoch'
-  else if (sourceAgreement >= 0.6) confidence = 'mittel'
+  if (sourceAgreement >= HIGH_AGREEMENT_THRESHOLD) confidence = 'hoch'
+  else if (sourceAgreement >= MEDIUM_AGREEMENT_THRESHOLD) confidence = 'mittel'
  
   const pvEstimateKwh = Number(mean.toFixed(1))
   const pvSurplusEstimateKwh = Number(Math.max(0, mean - houseLoadKwh).toFixed(1))
@@ -172,8 +185,13 @@ export function parseForecastResponse(data, pvConfig, houseLoadForDay) {
   const codeVariable = seriesForVariable('weathercode').length > 0 ? 'weathercode' : 'weather_code'
   const codeSeries = seriesForVariable(codeVariable)
   const precipSeries = seriesForVariable('precipitation')
+  // Temperatur/Sonnenstunden sind reine Zusatzinfo (keine Sicherheits-/Risikoeinstufung
+  // wie bei Regen/Gewitter), deshalb genügt hier ebenfalls "pro Modell, falls vorhanden,
+  // sonst die unpräfixierte Serie" statt eines eigenen Konsensverfahrens.
+  const tempSeries = seriesForVariable('temperature_2m')
+  const sunshineSeries = seriesForVariable('sunshine_duration')
  
-  /** @type {Map<string, { radiation: number[][], codes: number[][], precip: number[][] }>} */
+  /** @type {Map<string, { radiation: number[][], codes: number[][], precip: number[][], temp: number[][], sun: number[][] }>} */
   const byDay = new Map()
   times.forEach((t, i) => {
     const day = t.slice(0, 10)
@@ -182,12 +200,16 @@ export function parseForecastResponse(data, pvConfig, houseLoadForDay) {
         radiation: radiationSeries.map(() => []),
         codes: codeSeries.map(() => []),
         precip: precipSeries.map(() => []),
+        temp: tempSeries.map(() => []),
+        sun: sunshineSeries.map(() => []),
       })
     }
     const bucket = byDay.get(day)
     radiationSeries.forEach((series, idx) => bucket.radiation[idx].push(series[i] ?? 0))
     codeSeries.forEach((series, idx) => bucket.codes[idx].push(series[i] ?? 0))
     precipSeries.forEach((series, idx) => bucket.precip[idx].push(series[i] ?? 0))
+    tempSeries.forEach((series, idx) => bucket.temp[idx].push(series[i] ?? null))
+    sunshineSeries.forEach((series, idx) => bucket.sun[idx].push(series[i] ?? 0))
   })
  
   const days = [...byDay.keys()].sort().slice(0, 7)
@@ -200,7 +222,20 @@ export function parseForecastResponse(data, pvConfig, houseLoadForDay) {
     const worstWeatherCode = bucket.codes.length
       ? Math.max(...bucket.codes.flat().filter((c) => Number.isFinite(c)), -Infinity)
       : null
+    // Niederschlag: konservativ der ungünstigste (höchste) Tageswert über alle
+    // Modelle - passend zum Grundsatz "bei Unsicherheit lieber vorsichtig planen".
     const precipitationMm = bucket.precip.length ? Math.max(...bucket.precip.map((hours) => hours.reduce((s, v) => s + v, 0))) : 0
+ 
+    // Temperatur/Sonnenstunden sind reine Zusatzinfo für die Anzeige, kein Risikosignal
+    // -> hier reicht der Durchschnitt über die verfügbaren Modelle.
+    const allTemps = bucket.temp.flat().filter((v) => Number.isFinite(v))
+    const tempMinC = allTemps.length ? Math.round(Math.min(...allTemps)) : null
+    const tempMaxC = allTemps.length ? Math.round(Math.max(...allTemps)) : null
+ 
+    const sunHoursPerSeries = bucket.sun.map((hours) => hours.reduce((s, v) => s + v, 0) / 3600)
+    const sunHours = sunHoursPerSeries.length
+      ? Number((sunHoursPerSeries.reduce((s, v) => s + v, 0) / sunHoursPerSeries.length).toFixed(1))
+      : null
  
     const { icon, label } = classifyDay({
       pvEstimateKwh: combined.pvEstimateKwh,
@@ -218,6 +253,10 @@ export function parseForecastResponse(data, pvConfig, houseLoadForDay) {
       confidence: combined.confidence,
       sourceAgreement: combined.sourceAgreement,
       modelsUsed: availableModels.length,
+      precipitationMm: Number(precipitationMm.toFixed(1)),
+      sunHours,
+      tempMinC,
+      tempMaxC,
       stale: false,
     }
   })
@@ -236,7 +275,7 @@ export async function fetchWeatherWeek(location, houseLoadForDay, pvConfig) {
   const modelParam = WEATHER_MODELS.map((m) => m.id).join(',')
   const url =
     `${OPEN_METEO_BASE}?latitude=${location.lat}&longitude=${location.lon}` +
-    `&hourly=shortwave_radiation,precipitation,weathercode` +
+    `&hourly=shortwave_radiation,precipitation,weathercode,temperature_2m,sunshine_duration` +
     `&forecast_days=7&timezone=Europe%2FBerlin&models=${modelParam}`
  
   const res = await fetch(url)
