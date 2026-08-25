@@ -422,6 +422,14 @@ textarea {
   min-width: 0;
 }
 
+.info-card-full {
+  padding: 16px;
+}
+
+.info-card-full .mini-area-chart {
+  height: 46px;
+}
+
 .info-card-label {
   display: flex;
   align-items: center;
@@ -669,6 +677,12 @@ textarea {
   font-weight: 700;
   margin: 0 0 10px;
   color: var(--accent-strong);
+}
+
+.hero-window.no-charge {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-1);
 }
 
 .hero-soc {

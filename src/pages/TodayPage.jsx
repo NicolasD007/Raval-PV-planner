@@ -1,7 +1,6 @@
 import { useState } from 'react'
-import { Plus, ChevronDown, ChevronUp, Check, BatteryCharging, Zap, CalendarClock, Car } from 'lucide-react'
+import { Plus, ChevronDown, ChevronUp, Check, CalendarClock, Car } from 'lucide-react'
 import { addDays, isoWeekday, toISODate, weekdayNameDE } from '../lib/date.js'
-import { timeToMinutes } from '../lib/pvModel.js'
 import { estimateRangeKm } from '../lib/vehicleRange.js'
 import CircularGauge from '../components/CircularGauge.jsx'
 import MiniAreaChart from '../components/MiniAreaChart.jsx'
@@ -46,6 +45,12 @@ export default function TodayPage({ data, onUpdateSoc }) {
   const headline = plan?.todayHeadline
   const displayTitle = TITLE_MAP[headline?.action] ?? headline?.title ?? '…'
 
+  // Der nächste tatsächlich geplante Ladetag (heute oder später) - unabhängig davon,
+  // ob die Headline gerade "Heute laden" oder "Abwarten" ist, soll Tag+Zeitfenster
+  // sichtbar bleiben (siehe hero-window unten).
+  const futureChargeDay = plan?.days?.find((d) => d.date > today && d.action === 'CHARGE')
+  const relevantChargeDay = headline?.action === 'HEUTE_LADEN' ? todayPlan : headline?.action === 'WARTEN' ? futureChargeDay : null
+
   // Gauge zeigt beim heutigen Ladeplan das Ziel-SoC, sonst schlicht den aktuellen SoC
   // (es gibt für "Abwarten"/"Nicht laden" kein sinnvolles "Ziel für heute").
   const gaugeValue = headline?.action === 'HEUTE_LADEN' && todayPlan ? todayPlan.targetSoc : latestEntry.soc
@@ -66,15 +71,6 @@ export default function TodayPage({ data, onUpdateSoc }) {
     ? { date: nextOwnGoal.date, targetSoc: nextOwnGoal.targetSoc, label: 'Eigenes Ziel' }
     : { date: weekendDate, targetSoc: setup.weekend.targetPct, label: 'Wochenendziel' }
 
-  // Wallbox-Status: läuft *jetzt* gerade das für heute geplante Ladefenster?
-  // Rein aus dem vorhandenen Plan abgeleitet, keine echte Live-Wallbox-Anbindung.
-  const nowMin = new Date().getHours() * 60 + new Date().getMinutes()
-  const chargingNow =
-    todayPlan?.action === 'CHARGE' &&
-    todayPlan.chargingWindow &&
-    nowMin >= timeToMinutes(todayPlan.chargingWindow.start) &&
-    nowMin < timeToMinutes(todayPlan.chargingWindow.end)
-
   return (
     <main style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {weatherStale && <div className="stale-banner">⚠️ Wetterdaten nicht aktuell – zuletzt bekannter Stand wird angezeigt.</div>}
@@ -84,11 +80,18 @@ export default function TodayPage({ data, onUpdateSoc }) {
         <div className="hero-main-row">
           <div className="hero-main-text">
             <h1 className="hero-title">{displayTitle}</h1>
-            {headline?.window && (
+            {headline?.action === 'HEUTE_LADEN' && headline.window && (
               <p className="hero-window">
                 {headline.window.start}–{headline.window.end} Uhr
               </p>
             )}
+            {headline?.action === 'WARTEN' && futureChargeDay && (
+              <p className="hero-window">
+                {weekdayNameDE(futureChargeDay.date)}
+                {futureChargeDay.chargingWindow && `, ${futureChargeDay.chargingWindow.start}–${futureChargeDay.chargingWindow.end} Uhr`}
+              </p>
+            )}
+            {headline?.action === 'NICHT_LADEN' && <p className="hero-window no-charge">Kein Ladebedarf diese Woche</p>}
             {todayWeather && (
               <span className={`chip ${todayWeather.confidence}`}>
                 <Check size={13} /> {todayWeather.summary}
@@ -104,14 +107,13 @@ export default function TodayPage({ data, onUpdateSoc }) {
           )}
           <p className="hero-reason">
             {setup.vehicle.name.split(' ')[0]}: <span className="soc-from">{latestEntry.soc} %</span>
-            {headline?.action === 'HEUTE_LADEN' && todayPlan && (
+            {relevantChargeDay && (
               <>
                 {' → '}
-                <span className="soc-to">{todayPlan.targetSoc} %</span>
+                <span className="soc-to">{relevantChargeDay.targetSoc} %</span>
               </>
             )}
           </p>
-          <p className="hero-reason">Hausspeicher-Reserveziel (abends): ca. {setup.houseBattery.nightReservePct} %</p>
         </div>
 
         {todayWeather && (
@@ -141,37 +143,10 @@ export default function TodayPage({ data, onUpdateSoc }) {
         <Plus size={18} /> SoC aktualisieren
       </button>
 
-      <div className="info-card-row">
-        <div className="glass-card info-card">
-          <p className="info-card-label">☀️ PV heute</p>
-          <p className="info-card-value">~{Math.round(todayWeather?.pvEstimateKwh ?? 0)} kWh</p>
-          <MiniAreaChart shape={todayWeather?.pvHourlyShape} />
-          <p className="info-card-sub">Erwartet {setup.pv.totalKwp} kWp</p>
-        </div>
-
-        <div className="glass-card info-card">
-          <p className="info-card-label">
-            <BatteryCharging size={13} /> Hausspeicher
-          </p>
-          <p className="info-card-value">{setup.houseBattery.nightReservePct} %</p>
-          <div className="mini-progress-track">
-            <div className="mini-progress-fill" style={{ width: `${setup.houseBattery.nightReservePct}%` }} />
-          </div>
-          <p className="info-card-sub">
-            Reserve-Ziel · {((setup.houseBattery.nightReservePct / 100) * setup.houseBattery.capacityKwh).toFixed(1)} von{' '}
-            {setup.houseBattery.capacityKwh} kWh
-          </p>
-        </div>
-
-        <div className="glass-card info-card">
-          <p className="info-card-label">
-            <Zap size={13} /> Wallbox
-          </p>
-          <p className="info-card-value">{setup.wallboxKw} kW</p>
-          <p className={`info-card-status${chargingNow ? ' active' : ''}`}>
-            <span className="status-dot" /> {chargingNow ? 'Lädt gerade' : 'Überschussladen bereit'}
-          </p>
-        </div>
+      <div className="glass-card info-card info-card-full">
+        <p className="info-card-label">☀️ PV heute (gesamter Tag)</p>
+        <p className="info-card-value">~{Math.round(todayWeather?.pvEstimateKwh ?? 0)} kWh</p>
+        <MiniAreaChart shape={todayWeather?.pvHourlyShape} />
       </div>
 
       {weatherDays.length > 0 && (
