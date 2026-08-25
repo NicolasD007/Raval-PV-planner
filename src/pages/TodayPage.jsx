@@ -5,7 +5,7 @@ const CONFIDENCE_LABEL = { hoch: 'Hoch', mittel: 'Mittel', niedrig: 'Niedrig' }
 
 export default function TodayPage({ data, onUpdateSoc }) {
   const [detailsOpen, setDetailsOpen] = useState(false)
-  const { plan, weatherDays, latestEntry, weatherStale, setup, consumption } = data
+  const { plan, weatherDays, latestEntry, weatherStale, consumption } = data
 
   const todayWeather = weatherDays.find((w) => w.date === plan?.days?.[0]?.date) ?? weatherDays[0]
 
@@ -61,10 +61,6 @@ export default function TodayPage({ data, onUpdateSoc }) {
         <div className="glass-card stat-card">
           <p className="stat-label">PV-Überschuss</p>
           <p className="stat-value">~{Math.round(todayWeather?.pvSurplusEstimateKwh ?? 0)} kWh</p>
-        </div>
-        <div className="glass-card stat-card">
-          <p className="stat-label">Speicher-Nachtreserve (Ziel)</p>
-          <p className="stat-value">{setup.houseBattery.nightReservePct} %</p>
         </div>
         <div className="glass-card stat-card">
           <p className="stat-label">Prognosesicherheit</p>

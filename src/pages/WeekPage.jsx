@@ -28,12 +28,7 @@ export default function WeekPage({ data }) {
                   <span>
                     {weather?.icon ?? '❔'} {weather?.summary ?? 'keine Prognose'}
                   </span>
-                  {weather && (
-                    <span className={`badge ${weather.confidence}`}>
-                      {CONFIDENCE_LABEL[weather.confidence]}
-                      {typeof weather.modelsUsed === 'number' && ` · ${weather.modelsUsed}/5 Quellen`}
-                    </span>
-                  )}
+                  {weather && <span className={`badge ${weather.confidence}`}>{CONFIDENCE_LABEL[weather.confidence]}</span>}
                 </div>
                 {weather && (weather.sunHours != null || weather.tempMinC != null || weather.precipitationMm != null) && (
                   <div className="day-weather-details">
