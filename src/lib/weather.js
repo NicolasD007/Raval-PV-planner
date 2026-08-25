@@ -92,16 +92,26 @@ export function combineModelEstimates(pvKwhByModel, houseLoadKwh, modelsExpected
  
 // WMO-Wettercodes (von Open-Meteo verwendet) grob nach Schweregrad gruppiert.
 // Reihenfolge wichtig: spätere Einträge "gewinnen" bei gleichzeitig auftretenden Codes.
+// "mixLabel" (nur bei Regen/Schnee): Text für den Fall, dass am selben Tag trotzdem
+// nennenswert Sonne dabei ist - siehe classifyDay()/MEANINGFUL_SUN_HOURS.
 const SEVERITY_TIERS = [
   { test: (c) => c === 0, tier: 0, icon: '☀️', label: 'Klar' },
   { test: (c) => c >= 1 && c <= 2, tier: 1, icon: '🌤️', label: 'Leicht bewölkt' },
   { test: (c) => c === 3, tier: 2, icon: '⛅', label: 'Bewölkt' },
   { test: (c) => c === 45 || c === 48, tier: 3, icon: '🌫️', label: 'Nebel' },
   { test: (c) => c >= 51 && c <= 57, tier: 3, icon: '🌦️', label: 'Nieselregen' },
-  { test: (c) => (c >= 61 && c <= 67) || (c >= 80 && c <= 82), tier: 4, icon: '🌧️', label: 'Regen' },
-  { test: (c) => (c >= 71 && c <= 77) || c === 85 || c === 86, tier: 4, icon: '🌨️', label: 'Schnee' },
+  { test: (c) => (c >= 61 && c <= 67) || (c >= 80 && c <= 82), tier: 4, icon: '🌧️', label: 'Regen', mixLabel: 'Sonne & Regen' },
+  { test: (c) => (c >= 71 && c <= 77) || c === 85 || c === 86, tier: 4, icon: '🌨️', label: 'Schnee', mixLabel: 'Sonne & Schnee' },
   { test: (c) => c === 95 || c === 96 || c === 99, tier: 5, icon: '⛈️', label: 'Gewitter möglich' },
 ]
+ 
+// Ab wie viel Sonnenstunden am selben Tag ein reiner Schlechtwetter-Text
+// ("Regen"/"Schnee") irreführend wäre und stattdessen ein gemischter Zustand
+// ("Sonne & Regen") angezeigt wird. Gewitter (Tier 5) bleibt bewusst immer als
+// eigenständige, unübersehbare Warnung stehen - dafür genügen wenige Minuten,
+// und ein Blitz-Hinweis soll nicht durch "aber sonst sonnig" verwässert werden;
+// die Sonnenstunden werden dort stattdessen als Zusatzinfo an den Text angehängt.
+const MEANINGFUL_SUN_HOURS = 3
  
 function classifyWeatherCode(code) {
   let best = SEVERITY_TIERS[0]
@@ -117,18 +127,37 @@ function classifyWeatherCode(code) {
  * dabei bewusst die reine kWh-Einstufung - ein Tag mit ordentlicher
  * Tagesstrahlungssumme, aber nachmittäglichem Gewitter, soll NICHT als
  * "☀️ Sehr gute PV-Chance" angezeigt werden.
- * @param {{ pvEstimateKwh:number, confidence:string, worstWeatherCode:number|null, precipitationMm:number }} input
+ *
+ * Zwischenstufe (Bugfix "reiner Regen-Text trotz mehrerer Sonnenstunden"): Bei
+ * Regen/Schnee UND gleichzeitig mindestens MEANINGFUL_SUN_HOURS Sonne am
+ * selben Tag wird statt des reinen Schlechtwetter-Texts ein gemischter Zustand
+ * ("Sonne & Regen") angezeigt - ein einzelner Regenschauer macht aus einem Tag
+ * mit 6h Sonne keinen "Regen"-Tag. Gewitter bleibt davon bewusst ausgenommen
+ * (siehe MEANINGFUL_SUN_HOURS-Kommentar).
+ * @param {{ pvEstimateKwh:number, confidence:string, worstWeatherCode:number|null, precipitationMm:number, sunHours?:number|null }} input
  */
-export function classifyDay({ pvEstimateKwh, confidence, worstWeatherCode, precipitationMm }) {
+export function classifyDay({ pvEstimateKwh, confidence, worstWeatherCode, precipitationMm, sunHours = null }) {
   const codeInfo = worstWeatherCode != null ? classifyWeatherCode(worstWeatherCode) : null
+  const hasMeaningfulSun = sunHours != null && sunHours >= MEANINGFUL_SUN_HOURS
  
   let icon
   let label
   if (codeInfo && codeInfo.tier >= 4) {
-    // Gewitter, Regen oder Schnee laut Wettercode - unabhängig von der reinen
-    // Strahlungssumme, denn die kann an einem Gewittertag trotzdem beachtlich sein.
-    icon = codeInfo.icon
-    label = codeInfo.label
+    if (codeInfo.mixLabel && hasMeaningfulSun) {
+      // Regen/Schnee an einzelnen Stunden, aber der Tag hat trotzdem
+      // nennenswert Sonne - weder "nur Regen" noch "nur Sonne" trifft es.
+      icon = '🌦️'
+      label = codeInfo.mixLabel
+    } else {
+      // Gewitter, oder Regen/Schnee ohne nennenswerte Sonne - unabhängig von
+      // der reinen Strahlungssumme, denn die kann an so einem Tag trotzdem
+      // beachtlich sein.
+      icon = codeInfo.icon
+      label = codeInfo.label
+      if (codeInfo.tier === 5 && hasMeaningfulSun) {
+        label += ` · trotzdem ${sunHours} h Sonne`
+      }
+    }
   } else if (pvEstimateKwh >= 30) {
     icon = '☀️'
     label = 'Sehr gute PV-Chance'
@@ -242,6 +271,7 @@ export function parseForecastResponse(data, pvConfig, houseLoadForDay) {
       confidence: combined.confidence,
       worstWeatherCode: Number.isFinite(worstWeatherCode) ? worstWeatherCode : null,
       precipitationMm,
+      sunHours,
     })
  
     return {

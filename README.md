@@ -28,7 +28,11 @@ getestet) – nicht nur eine Beschreibung geplanter Funktionen.
   Streuung der 5 Modelle; die Schwellenwerte sind bewusst so gewählt, dass
   normale, für mehrtägige Strahlungsprognosen typische Modellstreuung nicht
   sofort als "niedrig" markiert wird (siehe Kommentar bei
-  `combineModelEstimates()` in `src/lib/weather.js`).
+  `combineModelEstimates()` in `src/lib/weather.js`). Regen/Schnee an
+  einzelnen Stunden bei gleichzeitig mehreren Sonnenstunden am selben Tag wird
+  als gemischter Zustand ("Sonne & Regen") statt als reiner Regen-Text
+  angezeigt (`classifyDay()`, `MEANINGFUL_SUN_HOURS`); Gewitter bleibt davon
+  bewusst ausgenommen und immer als eigenständige Warnung sichtbar.
 - **UI** (`src/pages/*`, "Liquid Glass"-Design): Heute, Woche, SoC, Ziele
   (inkl. Auto-Verfügbarkeit/Sperrzeiten), Setup. Mobile-first, 390 px, Safe-Area,
   Touch-Targets ≥ 44 px.
@@ -54,7 +58,7 @@ npm test
 
 Nutzt bewusst den in Node.js eingebauten Testrunner (`node --test`) statt
 Vitest – keine zusätzliche Test-Abhängigkeit, läuft überall ohne weiteren
-Installationsschritt. 44 Tests decken u. a. alle 12 in der Spec geforderten
+Installationsschritt. 47 Tests decken u. a. alle 12 in der Spec geforderten
 Planning-Engine-Fälle ab (`src/lib/planningEngine.test.mjs`):
 
 | # | Szenario |
@@ -149,7 +153,7 @@ direkt ausgeführt werden. Als Ersatz wurde:
 
 - die gesamte Business-Logik (Planning Engine, Verbrauchsschätzung, PV-/
   Wettermodell, Datumshilfen – alles in `src/lib/`) mit dem in Node.js
-  eingebauten Testrunner **tatsächlich ausgeführt** (37/44 Tests grün, daher
+  eingebauten Testrunner **tatsächlich ausgeführt** (37/47 Tests grün, daher
   jetzt auch der Umstieg von Vitest auf `node --test` als offizieller
   Testrunner des Projekts),
 - die komplette React/JSX-App mit einer lokal vorhandenen esbuild-Kopie

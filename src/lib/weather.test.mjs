@@ -68,6 +68,43 @@ describe('weather / PV-Konsens', () => {
     assert.match(label, /unsicher/)
   })
 
+  it('Bugfix "reiner Regen-Text trotz Sonne": Regen am selben Tag wie 6h Sonne wird als gemischter Zustand angezeigt, nicht als reiner Regentag', () => {
+    const rainyButSunny = classifyDay({
+      pvEstimateKwh: 20,
+      confidence: 'hoch',
+      worstWeatherCode: 63, // Regen (WMO)
+      precipitationMm: 4,
+      sunHours: 6,
+    })
+    assert.equal(rainyButSunny.icon, '🌦️')
+    assert.match(rainyButSunny.label, /Sonne/)
+    assert.match(rainyButSunny.label, /Regen/)
+
+    // Ohne nennenswerte Sonne (z.B. Ganztagesregen) bleibt es beim reinen Regen-Text.
+    const rainyAllDay = classifyDay({
+      pvEstimateKwh: 3,
+      confidence: 'hoch',
+      worstWeatherCode: 63,
+      precipitationMm: 12,
+      sunHours: 0.4,
+    })
+    assert.equal(rainyAllDay.icon, '🌧️')
+    assert.equal(rainyAllDay.label, 'Regen')
+  })
+
+  it('Gewitter bleibt als eigenständige Warnung stehen, auch bei viel Sonne am selben Tag - Sonnenstunden werden nur als Zusatzinfo angehängt', () => {
+    const stormyButSunny = classifyDay({
+      pvEstimateKwh: 30,
+      confidence: 'hoch',
+      worstWeatherCode: 95,
+      precipitationMm: 5,
+      sunHours: 7,
+    })
+    assert.equal(stormyButSunny.icon, '⛈️')
+    assert.match(stormyButSunny.label, /Gewitter/)
+    assert.match(stormyButSunny.label, /7 h Sonne/)
+  })
+
   describe('parseForecastResponse (synthetische Open-Meteo-Antwort, kein Netzwerk)', () => {
     const times = ['2026-08-28T12:00', '2026-08-28T13:00', '2026-08-29T12:00', '2026-08-29T13:00']
 
@@ -93,6 +130,32 @@ describe('weather / PV-Konsens', () => {
       assert.equal(days[0].icon, '☀️')
       assert.equal(days[1].icon, '⛈️')
       assert.match(days[1].summary, /Gewitter/)
+    })
+
+    it('zeigt bei Regen UND mehreren Sonnenstunden am selben Tag einen gemischten Zustand statt reinem Regen-Text (End-to-End)', () => {
+      // Eigene Zeitreihe mit 6 Stunden an Tag 1, damit die Tagessumme
+      // tatsächlich über die MEANINGFUL_SUN_HOURS-Schwelle (3h) kommen kann -
+      // die äußere `times`-Fixture hat nur 2h/Tag, das reicht dafür nicht.
+      const dayWithManyHours = [
+        '2026-08-28T09:00',
+        '2026-08-28T10:00',
+        '2026-08-28T11:00',
+        '2026-08-28T12:00',
+        '2026-08-28T13:00',
+        '2026-08-28T14:00',
+      ]
+      const hourly = {
+        time: dayWithManyHours,
+        [`shortwave_radiation_${WEATHER_MODELS[0].id}`]: [500, 700, 800, 850, 100, 700],
+        weathercode: [1, 1, 1, 63, 1, 1], // kurzer Regenschauer um 12 Uhr, sonst klar
+        precipitation: [0, 0, 0, 3, 0, 0],
+        [`sunshine_duration_${WEATHER_MODELS[0].id}`]: [3600, 3600, 3600, 0, 3600, 3600], // 5h Sonne von 6 möglichen Stunden
+      }
+      const days = parseForecastResponse({ hourly }, PV_CONFIG, () => 5)
+      assert.ok(days[0].sunHours >= 3, `Testdaten sollten >=3h Sonne ergeben, waren aber ${days[0].sunHours}`)
+      assert.equal(days[0].icon, '🌦️')
+      assert.match(days[0].summary, /Sonne/)
+      assert.match(days[0].summary, /Regen/)
     })
 
     it('extrahiert Sonnenstunden, Temperaturspanne und Niederschlagsmenge pro Tag', () => {
