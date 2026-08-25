@@ -10,10 +10,14 @@
  
 const OPEN_METEO_BASE = 'https://api.open-meteo.com/v1/forecast'
  
+// Wichtig: Open-Meteo erwartet hier die vollen, anbieter-präfixierten IDs
+// (per offizieller Doku-Beispiel-URLs geprüft) - "icon_seamless"/"gfs_seamless"
+// ohne Präfix waren falsch und führten dazu, dass diese beiden Modelle in der
+// API-Antwort schlicht fehlten (weniger echte Quellen -> ständig "unsicher").
 export const WEATHER_MODELS = [
-  { id: 'icon_seamless', label: 'DWD ICON' },
-  { id: 'ecmwf_ifs025', label: 'ECMWF IFS' },
-  { id: 'gfs_seamless', label: 'NOAA GFS' },
+  { id: 'dwd_icon_seamless', label: 'DWD ICON' },
+  { id: 'ecmwf_ifs', label: 'ECMWF IFS' },
+  { id: 'ncep_gfs_seamless', label: 'NOAA GFS' },
   { id: 'meteofrance_seamless', label: 'Météo-France' },
   { id: 'ukmo_seamless', label: 'UK Met Office' },
 ]

@@ -29,7 +29,10 @@ export default function WeekPage({ data }) {
                     {weather?.icon ?? '❔'} {weather?.summary ?? 'keine Prognose'}
                   </span>
                   {weather && (
-                    <span className={`badge ${weather.confidence}`}>{CONFIDENCE_LABEL[weather.confidence]}</span>
+                    <span className={`badge ${weather.confidence}`}>
+                      {CONFIDENCE_LABEL[weather.confidence]}
+                      {typeof weather.modelsUsed === 'number' && ` · ${weather.modelsUsed}/5 Quellen`}
+                    </span>
                   )}
                 </div>
                 {dayBlocks.length > 0 && (
