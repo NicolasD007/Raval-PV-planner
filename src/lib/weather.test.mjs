@@ -193,5 +193,29 @@ describe('weather / PV-Konsens', () => {
       assert.equal(days[0].tempMaxC, null)
       assert.equal(days[0].sunHours, null)
     })
+
+    it('pvHourlyShape ist ein echter, auf 0-1 normierter Einstrahlungsverlauf (kein erfundener Kurvenverlauf)', () => {
+      const dayHours = ['2026-08-28T09:00', '2026-08-28T10:00', '2026-08-28T11:00', '2026-08-28T12:00']
+      const hourly = {
+        time: dayHours,
+        [`shortwave_radiation_${WEATHER_MODELS[0].id}`]: [200, 800, 400, 100],
+        [`shortwave_radiation_${WEATHER_MODELS[1].id}`]: [200, 600, 400, 100],
+      }
+      const days = parseForecastResponse({ hourly }, PV_CONFIG, () => 5)
+      assert.equal(days[0].pvHourlyShape.length, 4)
+      // Stunde mit dem höchsten Mittelwert (Index 1: (800+600)/2=700) muss auf genau 1 normiert sein.
+      assert.equal(days[0].pvHourlyShape[1], 1)
+      assert.equal(days[0].pvHourlyShape[0], 0.286) // (200/700).toFixed(3)
+      assert.ok(days[0].pvHourlyShape.every((v) => v >= 0 && v <= 1))
+    })
+
+    it('pvHourlyShape ist null statt einer Nulllinie, wenn an dem Tag gar keine Einstrahlung vorliegt (z.B. reine Nachtdaten)', () => {
+      const hourly = {
+        time: times,
+        [`shortwave_radiation_${WEATHER_MODELS[0].id}`]: [0, 0, 0, 0],
+      }
+      const days = parseForecastResponse({ hourly }, PV_CONFIG, () => 5)
+      assert.equal(days[0].pvHourlyShape, null)
+    })
   })
 })

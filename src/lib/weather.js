@@ -259,6 +259,19 @@ export function parseForecastResponse(data, pvConfig, houseLoadForDay) {
     const houseLoadKwh = houseLoadForDay(day, meanTempC)
     const combined = combineModelEstimates(pvKwhByModel, houseLoadKwh, WEATHER_MODELS.length)
 
+    // Grober, aber echter Tagesverlauf der Einstrahlung (kein erfundener Kurvenverlauf):
+    // Mittelwert der stündlichen Rohwerte über alle verfügbaren Modelle, auf 0-1
+    // normiert (geteilt durch den höchsten Stundenwert des Tages). Dient nur der
+    // Sparkline-Anzeige ("PV heute"), nicht der eigentlichen kWh-Berechnung.
+    const hourCount = bucket.radiation[0]?.length ?? 0
+    const meanRadiationByHour = Array.from({ length: hourCount }, (_, h) => {
+      const vals = bucket.radiation.map((series) => series[h] ?? 0)
+      return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : 0
+    })
+    const maxRadiation = meanRadiationByHour.length ? Math.max(...meanRadiationByHour) : 0
+    const pvHourlyShape =
+      maxRadiation > 0 ? meanRadiationByHour.map((v) => Number((Math.max(0, v) / maxRadiation).toFixed(3))) : null
+
     const worstWeatherCode = bucket.codes.length
       ? Math.max(...bucket.codes.flat().filter((c) => Number.isFinite(c)), -Infinity)
       : null
@@ -292,6 +305,7 @@ export function parseForecastResponse(data, pvConfig, houseLoadForDay) {
       sunHours,
       tempMinC,
       tempMaxC,
+      pvHourlyShape,
       stale: false,
     }
   })

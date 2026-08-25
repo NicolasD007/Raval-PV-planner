@@ -40,6 +40,13 @@
  * @property {number} pvSurplusEstimateKwh
  * @property {'hoch'|'mittel'|'niedrig'} confidence
  * @property {number} sourceAgreement     0-1, wie einig sich die 5 Modelle sind
+ * @property {number} modelsUsed          Anzahl tatsächlich verfügbarer Modelle (max. 5)
+ * @property {number} precipitationMm     Niederschlag, konservativ (ungünstigstes Modell)
+ * @property {number|null} sunHours       Sonnenscheindauer in Stunden (Ø über verfügbare Modelle)
+ * @property {number|null} tempMinC       Tagestiefsttemperatur °C (über verfügbare Modelle)
+ * @property {number|null} tempMaxC       Tageshöchsttemperatur °C (über verfügbare Modelle)
+ * @property {number[]|null} pvHourlyShape  echter, auf 0-1 normierter Stundenverlauf der Einstrahlung
+ *                                           (nur für die Sparkline-Anzeige, kein eigener Kennwert)
  * @property {boolean} stale              true = keine frischen Wetterdaten (offline)
  */
 
@@ -85,6 +92,10 @@ export const DEFAULT_SETUP = {
     name: 'CUPRA Raval Endurance (211 PS, 155 kW)',
     batteryCapacityKwh: 52,
     safetyReservePct: 40, // harte Grenze, nie durch bewusstes Warten unterschreiten
+    // Bewusste Modellannahme (kein Messwert): grober WLTP-naher Realverbrauch für
+    // ein Fahrzeug dieser Klasse/Leistung, nur zur Reichweitenanzeige (siehe
+    // vehicleRange.js). Keine Anbindung an echte Bordcomputer-/Verbrauchsdaten.
+    assumedConsumptionKwhPer100km: 16.5,
   },
   weekend: {
     targetPct: 80,

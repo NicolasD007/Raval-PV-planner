@@ -35,7 +35,14 @@ getestet) – nicht nur eine Beschreibung geplanter Funktionen.
   bewusst ausgenommen und immer als eigenständige Warnung sichtbar.
 - **UI** (`src/pages/*`, "Liquid Glass"-Design): Heute, Woche, SoC, Ziele
   (inkl. Auto-Verfügbarkeit/Sperrzeiten), Setup. Mobile-first, 390 px, Safe-Area,
-  Touch-Targets ≥ 44 px.
+  Touch-Targets ≥ 44 px. Hintergrund: Bergpanorama in der Abenddämmerung, reiner
+  CSS/SVG-Nachbau (kein eingebundenes Foto, siehe `global.css`
+  `body::before`/`::after`) – funktioniert offline, keine Lizenzfrage. Die
+  Heute-Seite zeigt die Ladeempfehlung zusätzlich als Kreis-Gauge
+  (`CircularGauge.jsx`, Ziel-/aktueller SoC), eine PV-Sparkline aus dem echten
+  Stunden-Einstrahlungsverlauf (`MiniAreaChart.jsx`, `WeatherDay.pvHourlyShape`
+  – keine erfundene Dekokurve) und ein horizontal scrollbares 7-Tage-
+  Wetterkarussell (`WeatherCarousel.jsx`).
 - **Persistenz**: ausschließlich `localStorage`, kein Backend.
 - **PWA**: Manifest, Service Worker mit Offline-Shell, Apple-Meta-Tags,
   installierbar auf dem iPhone-Homescreen.
@@ -53,7 +60,7 @@ getestet) – nicht nur eine Beschreibung geplanter Funktionen.
   Woche-Tab) und SoC-Verlauf als Liniendiagramm (`SocChart.jsx`, SoC-Tab,
   inkl. Referenzlinien für Fahrzeug-Reserve/Wochenendziel) – reines SVG/CSS,
   keine Chart-Bibliothek.
-- **Tests**: 59 Unit-/Integrationstests (Node.js `node:test`, siehe unten).
+- **Tests**: 65 Unit-/Integrationstests (Node.js `node:test`, siehe unten).
 
 ## Lokal starten
 
@@ -72,7 +79,7 @@ npm test
 
 Nutzt bewusst den in Node.js eingebauten Testrunner (`node --test`) statt
 Vitest – keine zusätzliche Test-Abhängigkeit, läuft überall ohne weiteren
-Installationsschritt. 59 Tests decken u. a. alle 12 in der Spec geforderten
+Installationsschritt. 65 Tests decken u. a. alle 12 in der Spec geforderten
 Planning-Engine-Fälle ab (`src/lib/planningEngine.test.mjs`):
 
 | # | Szenario |
@@ -91,7 +98,7 @@ Planning-Engine-Fälle ab (`src/lib/planningEngine.test.mjs`):
 | 12 | Sperrzeit → nie ein Ladefenster innerhalb dieser Zeit |
 
 Weitere Tests: `date.test.mjs`, `pvModel.test.mjs`, `weather.test.mjs`,
-`houseLoad.test.mjs`, `history.test.mjs`.
+`houseLoad.test.mjs`, `history.test.mjs`, `vehicleRange.test.mjs`.
 
 ## Lint
 
@@ -149,6 +156,18 @@ Diese Werte wurden im Klärungsgespräch festgelegt und sind in
 - PV-Tagesverlauf: vereinfachtes Ost/West-Sinusmodell, kein exaktes
   Astronomie-/Verschattungsmodell. Ausreichend für Ladefenster-Empfehlungen,
   nicht für exakte Ertragsprognosen.
+- Reichweitenanzeige ("~138 km verfügbar", Heute-Seite): fester Verbrauchswert
+  von 16,5 kWh/100 km (`vehicle.assumedConsumptionKwhPer100km`, siehe
+  `src/lib/vehicleRange.js`) – ein grober, WLTP-naher Schätzwert, kein
+  Bordcomputer-Messwert, den diese App nicht hat.
+- **Hausspeicher-/Wallbox-Karten auf der Heute-Seite zeigen bewusst keine
+  erfundene Live-SoC/Live-Status-Anzeige**: "Hausspeicher" zeigt das
+  konfigurierte Reserve-Ziel (`houseBattery.nightReservePct`), nicht einen
+  gemessenen aktuellen Ladestand (den es mangels Speicher-Telemetrie nicht
+  gibt); "Wallbox" zeigt "Lädt gerade" nur, wenn die aktuelle Uhrzeit
+  tatsächlich im heute geplanten Ladefenster liegt (aus dem echten Plan
+  abgeleitet), sonst "Überschussladen bereit" – ebenfalls keine echte
+  Wallbox-Anbindung.
 
 ## Was noch echte externe Daten/Kalibrierung braucht
 
@@ -158,6 +177,9 @@ Diese Werte wurden im Klärungsgespräch festgelegt und sind in
   spürbar verbessern.
 - **Hausspeicher-SoC** wird nicht live erfasst (siehe oben) – nur über eine
   feste Pauschalreserve modelliert.
+- **Wallbox-Status** ("Lädt gerade") ist aus dem Plan abgeleitet (aktuelle
+  Uhrzeit liegt im geplanten Ladefenster), keine echte Wallbox-API-Anbindung
+  – eine reale Integration könnte den tatsächlichen Ladezustand live zeigen.
 - **Wärmepumpen-Verbrauch** ist jetzt temperaturabhängig, sobald eine
   Temperaturprognose vorliegt (siehe oben) – aber weiterhin ein vereinfachtes,
   lineares Modell (kein Gebäude-/Heizlastmodell, keine reale COP-Kennlinie).
@@ -176,7 +198,7 @@ direkt ausgeführt werden. Als Ersatz wurde:
 
 - die gesamte Business-Logik (Planning Engine, Verbrauchsschätzung, PV-/
   Wettermodell, Datumshilfen – alles in `src/lib/`) mit dem in Node.js
-  eingebauten Testrunner **tatsächlich ausgeführt** (59/59 Tests grün, daher
+  eingebauten Testrunner **tatsächlich ausgeführt** (65/65 Tests grün, daher
   jetzt auch der Umstieg von Vitest auf `node --test` als offizieller
   Testrunner des Projekts),
 - die komplette React/JSX-App mit einer lokal vorhandenen esbuild-Kopie
